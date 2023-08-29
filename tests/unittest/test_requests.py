@@ -326,7 +326,7 @@ def test_cookies_with_special_chars(server):
 
 # https://github.com/yifeikong/curl_cffi/issues/39
 def test_post_body_cleaned(server):
-    s = requests.Session()
+    s = requests.Session(debug=True)
     # POST with body
     r = s.post(str(server.url), json={"foo": "bar"})
     # GET request with echo_body

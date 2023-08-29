@@ -10,7 +10,7 @@ from json import dumps
 from typing import Callable, Dict, List, Optional, Tuple, Union, cast
 from urllib.parse import ParseResult, parse_qsl, unquote, urlencode, urlparse
 
-from .. import AsyncCurl, Curl, CurlError, CurlInfo, CurlOpt, CurlHttpVersion
+from .. import AsyncCurl, Curl, CurlError, CurlInfo, CurlOpt, CurlHttpVersion, ffi
 from .cookies import Cookies, CookieTypes, CurlMorsel
 from .errors import RequestsError
 from .headers import Headers, HeaderTypes
@@ -214,8 +214,11 @@ class BaseSession:
             body = b""
         else:
             raise TypeError("data must be dict, str, BytesIO or bytes")
-        if json:
+        if json is not None:
             body = dumps(json, separators=(",", ":")).encode()
+        if method == "GET":
+            c.setopt(CurlOpt.POST, 0)
+        #     import pdb; pdb.set_trace()
         if body:
             c.setopt(CurlOpt.POSTFIELDS, body)
             # necessary if body contains '\0'
@@ -228,12 +231,14 @@ class BaseSession:
         header_lines = []
         for k, v in h.multi_items():
             header_lines.append(f"{k}: {v}")
-        if json:
+        if json is not None:
             _update_header_line(header_lines, "Content-Type", "application/json")
         if isinstance(data, dict) and method != "POST":
             _update_header_line(
                 header_lines, "Content-Type", "application/x-www-form-urlencoded"
             )
+        # if method in ("POST", "PUT"):
+        #     _update_header_line(header_lines, "Expect", "")
         # print("header lines", header_lines)
         c.setopt(CurlOpt.HTTPHEADER, [h.encode() for h in header_lines])
 
@@ -406,6 +411,37 @@ class BaseSession:
 
         return rsp
 
+    def _reset_options(self, curl: Curl):
+        c = curl
+        c.setopt(CurlOpt.CUSTOMREQUEST, ffi.NULL)
+        c.setopt(CurlOpt.URL, "")
+        c.setopt(CurlOpt.POSTFIELDS, ffi.NULL)
+        c.setopt(CurlOpt.POSTFIELDSIZE, -1)
+        c.setopt(CurlOpt.POST, 0)
+        c.setopt(CurlOpt.HTTPHEADER, [])
+        c.setopt(CurlOpt.USERNAME, ffi.NULL)  # XXX: null or empty?
+        c.setopt(CurlOpt.PASSWORD, ffi.NULL)
+        c.setopt(CurlOpt.CONNECTTIMEOUT_MS, 300000)
+        c.setopt(CurlOpt.TIMEOUT_MS, 0)
+        c.setopt(CurlOpt.FOLLOWLOCATION, 0)
+        c.setopt(CurlOpt.MAXREDIRS, -1)  # unlimited in curl 7.84.0
+        c.setopt(CurlOpt.PROXY, ffi.NULL)
+        c.setopt(CurlOpt.HTTPPROXYTUNNEL, 0)
+        c.setopt(CurlOpt.SSL_VERIFYPEER, 1)
+        c.setopt(CurlOpt.SSL_VERIFYHOST, 1)
+        # c.setopt(CurlOpt.CAINFO, )  # not sure about this one
+        c.setopt(CurlOpt.REFERER, ffi.NULL)
+        c.setopt(CurlOpt.ACCEPT_ENCODING, ffi.NULL)
+        c.setopt(CurlOpt.HTTP_VERSION, CurlHttpVersion.V2TLS)
+        # unlikely to reset to default
+        # c.setopt(CurlOpt.WRITEDATA, )
+        # c.setopt(CurlOpt.WRITEFUNCTION, )
+        # c.setopt(CurlOpt.HEADERDATA, )
+        c.setopt(CurlOpt.NOBODY, 0)
+        c.setopt(CurlOpt.INTERFACE, ffi.NULL)
+        c._is_cert_set = False
+        c._set_error_buffer()
+
 
 # ThreadType = Literal["eventlet", "gevent", None]
 
@@ -546,13 +582,16 @@ class Session(BaseSession):
             else:
                 c.perform()
         except CurlError as e:
-            raise RequestsError(str(e), e.code) from e
+            rsp = self._parse_response(c, buffer, header_buffer)
+            rsp.request = req
+            raise RequestsError(str(e), e.code, rsp) from e
         else:
             rsp = self._parse_response(c, buffer, header_buffer)
             rsp.request = req
             return rsp
         finally:
-            self.curl.reset()
+            # self.curl.reset()
+            self._reset_options(c)
 
     head = partialmethod(request, "HEAD")
     get = partialmethod(request, "GET")
@@ -700,13 +739,16 @@ class AsyncSession(BaseSession):
             await self.acurl.add_handle(curl)
             # print(curl.getinfo(CurlInfo.CAINFO))
         except CurlError as e:
-            raise RequestsError(str(e), e.code) from e
+            rsp = self._parse_response(curl, buffer, header_buffer)
+            rsp.request = req
+            raise RequestsError(str(e), e.code, rsp) from e
         else:
             rsp = self._parse_response(curl, buffer, header_buffer)
             rsp.request = req
             return rsp
         finally:
-            curl.reset()
+            # curl.reset()
+            self._reset_options(curl)
             self.push_curl(curl)
 
     head = partialmethod(request, "HEAD")
