@@ -1,0 +1,18 @@
+- hosts: localhost
+  connection: local
+  tasks:
+    - name: Retrieve fingerprints
+      containers.podman.podman_container:
+        name: chrome={{ item }}
+        image: docker.io/selenium/node-chrome:{{ item }}
+        auto_remove: false
+        debug: true
+      loop:
+        - 110.0
+        - 111.0
+        - 112.0
+        - 113.0
+        - 114.0
+        - 115.0
+        - 116.0
+        - 117.0
