@@ -1,0 +1,38 @@
+- hosts: localhost
+  connection: local
+  tasks:
+    - name: Install selenium
+      pip:
+        name: selenium
+    - name: Stop chrome({{ version }})
+      containers.podman.podman_container:
+        name: chrome-{{ version }}
+        state: stopped
+      loop:
+        - 110
+        - 111
+        - 112
+        - 113
+        - 114
+        - 115
+        - 116
+        - 117
+        - 118
+        - 119
+      loop_control:
+        loop_var: version
+    - name: Retrieve fingerprints
+      include_tasks: retrieve.yaml
+      loop:
+        - 110
+        - 111
+        - 112
+        - 113
+        - 114
+        - 115
+        - 116
+        - 117
+        - 118
+        - 119
+      loop_control:
+        loop_var: version

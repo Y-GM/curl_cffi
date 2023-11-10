@@ -1,0 +1,19 @@
+- name: Start chrome({{ version }}) in docker
+  containers.podman.podman_container:
+    name: chrome-{{ version }}
+    image: docker.io/selenium/standalone-chrome:{{ version }}.0
+    auto_remove: false
+    debug: true
+    publish:
+      - 4444:4444
+      - 7900:7900
+
+- name: Run fingerprint.py
+  script: get_fingerprint.py {{ version }}
+  args:
+    executable: python3
+
+- name: Stop chrome({{ version }})
+  containers.podman.podman_container:
+    name: chrome-{{ version }}
+    state: stopped
